@@ -23,6 +23,10 @@ __kernel void transpose (__global unsigned *in, __global unsigned *out)
   out [(x - xloc + yloc) * DIM + y - yloc + xloc] = tile [yloc][xloc];
 }
 
+__kernel void compute_cl (__global unsigned *in, __global unsigned *out){
+
+}
+
 
 
 

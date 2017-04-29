@@ -181,6 +181,7 @@ int main (int argc, char **argv)
   }
 
   graphics_clean ();
+  clean_compute ();
 
   return 0;
 }
