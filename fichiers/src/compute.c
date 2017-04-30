@@ -54,37 +54,42 @@ unsigned opencl_used [] = {
   1,
 };
 
+// Matrice qui va associer les coordonnées d'une tuile à un booléen
+// Si booleen à vrai => la matrice est suceptible de changer sinon la tuile doit être ignorée
+// 		* initialisée dans initialize_tile_calc() si sa valeur = NULL (= une fois dans l'exécution)
+//		* clean dans clean_compute() (appelée à la fin du main)
+//		* mis à jour à la fin de chaque itération par update_tile_calc()
 int **tile_calc = NULL;
 
 ///////////////////////////// Fonctions
 
-// Calcul le nombre de cellule vivante autour d'une cellule gràce à ses coordonnées
-int number_arround_alive_cell (int i, int j){
+// Calcul le nombre de cellule vivante autour de la cellule (l, c)
+int number_arround_alive_cell (int l, int c){
 	int cpt_alive_cell = 0;
 	
 	// top
-	if (i > 0) cpt_alive_cell += (cur_img (i-1, j) != DEAD_STATE);
+	if (l > 0) cpt_alive_cell += (cur_img (l-1, c) != DEAD_STATE);
 	
 	// top-right corner
-	if (i > 0 && j < DIM-1) cpt_alive_cell += (cur_img (i-1, j+1) != DEAD_STATE);
+	if (l > 0 && c < DIM-1) cpt_alive_cell += (cur_img (l-1, c+1) != DEAD_STATE);
 	
 	// right
-	if (j < DIM-1) cpt_alive_cell += (cur_img (i, j+1) != DEAD_STATE);
+	if (c < DIM-1) cpt_alive_cell += (cur_img (l, c+1) != DEAD_STATE);
 	
 	// right-bottom corner
-	if (i < DIM-1 && j < DIM-1)	cpt_alive_cell += (cur_img (i+1, j+1) != DEAD_STATE);
+	if (l < DIM-1 && c < DIM-1)	cpt_alive_cell += (cur_img (l+1, c+1) != DEAD_STATE);
 	
 	// bottom
-	if (i < DIM-1) cpt_alive_cell += (cur_img (i+1, j) != DEAD_STATE);
+	if (l < DIM-1) cpt_alive_cell += (cur_img (l+1, c) != DEAD_STATE);
 	
 	// left-bottom corner
-	if (i < DIM-1 && j > 0)	cpt_alive_cell += (cur_img (i+1, j-1) != DEAD_STATE);
+	if (l < DIM-1 && c > 0)	cpt_alive_cell += (cur_img (l+1, c-1) != DEAD_STATE);
 	
 	// left
-	if (j > 0) cpt_alive_cell += (cur_img (i, j-1) != DEAD_STATE);
+	if (c > 0) cpt_alive_cell += (cur_img (l, c-1) != DEAD_STATE);
 	
 	// top-left corner
-	if (i > 0 && j > 0)	cpt_alive_cell += (cur_img (i-1, j-1) != DEAD_STATE);
+	if (l > 0 && c > 0)	cpt_alive_cell += (cur_img (l-1, c-1) != DEAD_STATE);
 	
 	return cpt_alive_cell;
 }
@@ -107,88 +112,80 @@ bool set_next_state (int l, int c) {
     return next_state != current_state;
 }
 
-void update_tile_calc (){
-	int local_l, local_c;
-	int l, c;
+// retourne vrai si la tuile de coordonnées (l_tile, c_tile) va changer au prochain calcul
+// 		* static_field = 0 -> ligne constante avec une valeur de value_static_field
+// 		* static_field != 0 -> colonne constante avec une valeur de value_static_field
+bool check_boarder (int l_tile, int c_tile, int static_field, int value_static_field){
+	int l = 0, c = 0;
+	
 	int cell_arround;
 	Uint32 current_state;
 	
+	bool ret = false;
+	
+	if (static_field == 0){
+		l = l_tile * TILE_SIZE + value_static_field;
+	}
+	else {
+		c = c_tile * TILE_SIZE + value_static_field;
+	}
+	
+	for (int variable_field = 0; variable_field < TILE_SIZE; variable_field++){
+		if (static_field != 0){
+			l = l_tile * TILE_SIZE + variable_field;
+		}
+		else {
+			c = c_tile * TILE_SIZE + variable_field;
+		}
+		
+		current_state = cur_img (l, c);
+		cell_arround = number_arround_alive_cell (l, c);
+		
+		if ((current_state == DEAD_STATE  && cell_arround == 3) || // cell is dead and 3 cells alive arround
+			(current_state == ALIVE_STATE && (cell_arround == 2 || cell_arround == 3))){ // cell is alive and 2 or 3 cells alive arround
+			ret = true;
+			break;
+		}
+	}
+	
+	return ret;
+}
+
+// Met à jour la matrice qui associe les tuiles à un booleen
+void update_tile_calc (){
 	int nb_tile = DIM / TILE_SIZE;
 	
 	// parcours de toute les tuiles
 	for (int l_tile = 0; l_tile < nb_tile; l_tile++){
 		for (int c_tile = 0; c_tile < nb_tile; c_tile++){
-			// Bord haut
-			if (!tile_calc[l_tile][c_tile] && l_tile > 0){
-				local_l = 0;
-				l = l_tile * TILE_SIZE + local_l;
-				for (local_c = 0; local_c < TILE_SIZE; local_c++){
-					c = c_tile * TILE_SIZE + local_c;
-					
-					current_state = cur_img (l, c);
-					cell_arround = number_arround_alive_cell (l, c);
-					
-					if ((current_state == DEAD_STATE  && cell_arround == 3) || // cell is dead and 3 cells alive arround
-						(current_state == ALIVE_STATE && (cell_arround == 2 || cell_arround == 3))){ // cell is alive and 2 or 3 cells alive arround
-						tile_calc[l_tile][c_tile] = true;
-						break;
-					}
-				}
-			}
 			
-			// Board gauche
-			if (!tile_calc[l_tile][c_tile] && c_tile > 0){ 
-				local_c = 0;
-				c = c_tile * TILE_SIZE + local_c;
-				for (local_l = 0; local_l < TILE_SIZE; local_l++){
-					l = l_tile * TILE_SIZE + local_l;
-					
-					current_state = cur_img (l, c);
-					cell_arround = number_arround_alive_cell (l, c);
-					
-					if ((current_state == DEAD_STATE  && cell_arround == 3) || // cell is dead and 3 cells alive arround
-						(current_state == ALIVE_STATE && (cell_arround == 2 || cell_arround == 3))){ // cell is alive and 2 or 3 cells alive arround
-						tile_calc[l_tile][c_tile] = true;
-						break;
-					}
-				}
-			}
-				
-			// Board droit
-			if (!tile_calc[l_tile][c_tile] && c_tile < nb_tile - 1){ 
-				local_c = TILE_SIZE - 1;
-				c = c_tile * TILE_SIZE + local_c;
-				for (local_l = 0; local_l < TILE_SIZE; local_l++){
-					l = l_tile * TILE_SIZE + local_l;
-					
-					current_state = cur_img (l, c);
-					cell_arround = number_arround_alive_cell (l, c);
-					
-					if ((current_state == DEAD_STATE  && cell_arround == 3) || // cell is dead and 3 cells alive arround
-						(current_state == ALIVE_STATE && (cell_arround == 2 || cell_arround == 3))){ // cell is alive and 2 or 3 cells alive arround
-						tile_calc[l_tile][c_tile] = true;
-						break;
-					}
-				}
-			}
-				
-			// bord du bas
-			if (!tile_calc[l_tile][c_tile] && l_tile < nb_tile - 1){ 
-				local_l = TILE_SIZE - 1;
-				l = l_tile * TILE_SIZE + local_l;
-				for (local_c = 0; local_c < TILE_SIZE; local_c++){
-					c = c_tile * TILE_SIZE + local_c;
-					
-					current_state = cur_img (l, c);
-					cell_arround = number_arround_alive_cell (l, c);
-					
-					if ((current_state == DEAD_STATE  && cell_arround == 3) || // cell is dead and 3 cells alive arround
-						(current_state == ALIVE_STATE && (cell_arround == 2 || cell_arround == 3))){ // cell is alive and 2 or 3 cells alive arround
-						tile_calc[l_tile][c_tile] = true;
-						break;
-					}
-				}
-			}
+			// Si la tuile va être calculé au prochain tour on ignore ses vérifications
+			if (!tile_calc[l_tile][c_tile]){
+				tile_calc[l_tile][c_tile] =
+					 // Si la tuile est ignorée
+					 // 	&& si elle n'est pas sur la première ligne
+					 // 	&& si un pixel sur ça bordure haute (première ligne de la tuile) va changer au prochain calcul
+					 // => on met le booleen a true dans la matrice et on arrête les vérifications
+					 (l_tile > 0 && check_boarder (l_tile, c_tile, 0, 0)) ||
+					 
+					 // OU Si la tuile est ignorée
+					 // 	&& si elle n'est pas sur la première colonne
+					 // 	&& si un pixel sur ça bordure à gauche (première colonne de la tuile) va changer au prochain calcul
+					 // => on met le booleen a true dans la matrice et on arrête les vérifications
+					 (!tile_calc[l_tile][c_tile] && c_tile > 0 && check_boarder (l_tile, c_tile, 1, 0)) ||
+					 
+					 // OU Si la tuile est ignorée
+					 // 	&& si elle n'est pas sur la dernière ligne
+					 // 	&& si un pixel sur ça bordure basse (dernière ligne de la tuile) va changer au prochain calcul
+					 // => on met le booleen a true dans la matrice et on arrête les vérifications
+					 (!tile_calc[l_tile][c_tile] && (l_tile < nb_tile - 1) && check_boarder (l_tile, c_tile, 0, TILE_SIZE - 1)) ||
+					 
+					 // OU Si la tuile est ignorée
+					 // 	&& si elle n'est pas sur la dernière colonne
+					 // 	&& si un pixel sur ça bordure à droite (dernière colonne de la tuile) va changer au prochain calcul
+					 // => on met le booleen a true dans la matrice
+					 (!tile_calc[l_tile][c_tile] && (c_tile < nb_tile - 1) && check_boarder (l_tile, c_tile, 1, TILE_SIZE - 1));
+			 }
 		}
 	}
 }
@@ -234,7 +231,7 @@ unsigned compute_seq_base (unsigned nb_iter) {
 		}
 		
 		if (!next_image_change) {
-			current_iter = it-1; 
+			current_iter = it; 
 			break;
 		}
 		else {
@@ -275,7 +272,7 @@ unsigned compute_seq_tile (unsigned nb_iter) {
 		}
     
     	if (!next_image_change) {
-			current_iter = it-1; 
+			current_iter = it; 
 			break;
 		}
 		else {
@@ -315,7 +312,6 @@ unsigned compute_seq_tile_optimized (unsigned nb_iter){
 						for (int local_c = 0; local_c < TILE_SIZE; local_c++){			
 							l = l_tile * TILE_SIZE + local_l;
 							c = c_tile * TILE_SIZE + local_c;
-						
 					
 							tile_change = (set_next_state(l, c) || tile_change);
 						
@@ -329,7 +325,7 @@ unsigned compute_seq_tile_optimized (unsigned nb_iter){
 		}
     
     	if (!next_image_change) {
-			current_iter = it-1; 
+			current_iter = it; 
 			break;
 		}
 		else {
@@ -361,7 +357,13 @@ unsigned compute_omp_for_base (unsigned nb_iter) {
 			}
 		}
 
-		swap_images ();
+		if (!next_image_change) {
+			current_iter = it; 
+			break;
+		}
+		else {
+	    	swap_images ();
+    	}
 	}
 	
 	// retourne le nombre d'étapes nécessaires à la
@@ -384,7 +386,13 @@ unsigned compute_omp_for_tile (unsigned nb_iter) {
 			}
 		}
 
-		swap_images ();
+		if (!next_image_change) {
+			current_iter = it; 
+			break;
+		}
+		else {
+	    	swap_images ();
+    	}
 	}
 	
 	// retourne le nombre d'étapes nécessaires à la
