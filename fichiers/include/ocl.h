@@ -12,5 +12,6 @@ void ocl_wait (void);
 void ocl_update_texture (void);
 
 extern unsigned SIZE, TILE;
+extern char *kernel_name;
 
 #endif
