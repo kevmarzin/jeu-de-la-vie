@@ -206,9 +206,10 @@ void update_tile_calc_omp_for (){
 	int nb_tile = DIM / TILE_SIZE;
 	
 	// parcours de toute les tuiles
+	#pragma omp parallel for
 	for (int l_tile = 0; l_tile < nb_tile; l_tile++){
 		for (int c_tile = 0; c_tile < nb_tile; c_tile++){
-			
+		
 			// Si la tuile va être calculé au prochain tour on ignore ses vérifications
 			if (!tile_calc[l_tile][c_tile]){
 				tile_calc[l_tile][c_tile] =
@@ -236,49 +237,6 @@ void update_tile_calc_omp_for (){
 					 // => on met le booleen a true dans la matrice
 					 (!tile_calc[l_tile][c_tile] && (c_tile < nb_tile - 1) && check_boarder (l_tile, c_tile, 1, TILE_SIZE - 1));
 			 }
-		}
-	}
-}
-
-void update_tile_calc_omp_task (){
-	int nb_tile = DIM / TILE_SIZE;
-	
-	// parcours de toute les tuiles
-	#pragma omp parallel
-	{
-		#pragma omp master
-		for (int l_tile = 0; l_tile < nb_tile; l_tile++){
-			for (int c_tile = 0; c_tile < nb_tile; c_tile++){
-			
-				// Si la tuile va être calculé au prochain tour on ignore ses vérifications
-				if (!tile_calc[l_tile][c_tile]){
-					#pragma omp task firstprivate(l_tile,c_tile)
-					tile_calc[l_tile][c_tile] =
-						 // Si la tuile est ignorée
-						 // 	&& si elle n'est pas sur la première ligne
-						 // 	&& si un pixel sur ça bordure haute (première ligne de la tuile) va changer au prochain calcul
-						 // => on met le booleen a true dans la matrice et on arrête les vérifications
-						 (l_tile > 0 && check_boarder (l_tile, c_tile, 0, 0)) ||
-						 
-						 // OU Si la tuile est ignorée
-						 // 	&& si elle n'est pas sur la première colonne
-						 // 	&& si un pixel sur ça bordure à gauche (première colonne de la tuile) va changer au prochain calcul
-						 // => on met le booleen a true dans la matrice et on arrête les vérifications
-						 (!tile_calc[l_tile][c_tile] && c_tile > 0 && check_boarder (l_tile, c_tile, 1, 0)) ||
-						 
-						 // OU Si la tuile est ignorée
-						 // 	&& si elle n'est pas sur la dernière ligne
-						 // 	&& si un pixel sur ça bordure basse (dernière ligne de la tuile) va changer au prochain calcul
-						 // => on met le booleen a true dans la matrice et on arrête les vérifications
-						 (!tile_calc[l_tile][c_tile] && (l_tile < nb_tile - 1) && check_boarder (l_tile, c_tile, 0, TILE_SIZE - 1)) ||
-						 
-						 // OU Si la tuile est ignorée
-						 // 	&& si elle n'est pas sur la dernière colonne
-						 // 	&& si un pixel sur ça bordure à droite (dernière colonne de la tuile) va changer au prochain calcul
-						 // => on met le booleen a true dans la matrice
-						 (!tile_calc[l_tile][c_tile] && (c_tile < nb_tile - 1) && check_boarder (l_tile, c_tile, 1, TILE_SIZE - 1));
-				 }
-			}
 		}
 	}
 }
@@ -472,7 +430,7 @@ unsigned compute_omp_for_tile (unsigned nb_iter) {
 
 	for (unsigned it = 1; it <= nb_iter; it ++) {
 		current_iter = it;
-        #pragma omp parallel for collapse(2) schedule(dynamic, TILE_SIZE)
+        #pragma omp parallel for collapse(2) schedule(static, TILE_SIZE)
     	for (int l = 0; l < DIM; l++){
 			for (int c = 0; c < DIM; c++){
 				next_image_change = (set_next_state(l, c) || next_image_change);
@@ -494,6 +452,7 @@ unsigned compute_omp_for_tile (unsigned nb_iter) {
     return next_image_change ? 0 : current_iter;
 }
 
+// version OpenMP (for) tuilée optimisée
 unsigned compute_omp_for_optimized(unsigned nb_iter)
 {
 	int current_iter = 0;
@@ -508,8 +467,6 @@ unsigned compute_omp_for_optimized(unsigned nb_iter)
 					next_image_change = (set_next_state(l, c) || next_image_change);
 			}
 		}
-
-		
 
 		if (!next_image_change) {
 			current_iter = it; 
@@ -557,7 +514,9 @@ unsigned compute_omp_task_tile(unsigned nb_iter)
 			}
 		}
 
+		// barrier
 		#pragma omp taskwait
+
 		if (!next_image_change) {
 			current_iter = it; 
 			break;
@@ -614,15 +573,17 @@ unsigned compute_omp_task_optimized(unsigned nb_iter)
 				}
 			}
 		}
-
+		
+		// barrier
 		#pragma omp taskwait
+
 		if (!next_image_change) {
 			current_iter = it; 
 			break;
 		}
 		else {
 	    	swap_images ();
-	    	update_tile_calc_omp_task();
+	    	update_tile_calc_omp_for();
     	}
 	}
 	// retourne le nombre d'étapes nécessaires à la
@@ -630,42 +591,6 @@ unsigned compute_omp_task_optimized(unsigned nb_iter)
     // stabilisé au bout des nb_iter itérations
     return next_image_change ? 0 : current_iter;
 }
-
-//////////////////////////////////////////////////////////////////////////////////
-
-
-void first_touch_v1 ()
-{
-  int i,j ;
-
-#pragma omp parallel for
-  for(i=0; i<DIM ; i++) {
-    for(j=0; j < DIM ; j += 512)
-      next_img (i, j) = cur_img (i, j) = 0 ;
-  }
-}
-
-// Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
-/*unsigned compute_v1(unsigned nb_iter){
-    //return compute_v1_base (nb_iter);
-    return compute_v1_tile (nb_iter);
-}*/
-
-
-
-///////////////////////////// Version OpenMP optimisée
-
-void first_touch_v2 ()
-{
-
-}
-
-// Renvoie le nombre d'itérations effectuées avant stabilisation, ou 0
-unsigned compute_v2(unsigned nb_iter)
-{
-  return 0; // on ne s'arrête jamais
-}
-
 
 ///////////////////////////// Version OpenCL
 
