@@ -337,8 +337,7 @@ unsigned compute_seq_tile (unsigned nb_iter) {
     return next_image_change ? 0 : current_iter;
 }
 
-
-
+// Version séquentielle tuilée optmisée
 unsigned compute_seq_tile_optimized (unsigned nb_iter){
 	int nb_tile = DIM / TILE_SIZE;
 	
@@ -484,6 +483,7 @@ unsigned compute_omp_for_optimized(unsigned nb_iter)
     return next_image_change ? 0 : current_iter;
 }
 
+// Version OpenMP (task) tuilée
 unsigned compute_omp_task_tile(unsigned nb_iter)
 {
 	int nb_tile = DIM / TILE_SIZE;
@@ -532,7 +532,7 @@ unsigned compute_omp_task_tile(unsigned nb_iter)
     return next_image_change ? 0 : current_iter;
 }
 
-
+// Version OpenMP (task) tuilée optimisée
 unsigned compute_omp_task_optimized(unsigned nb_iter)
 {
 	int nb_tile = DIM / TILE_SIZE;
